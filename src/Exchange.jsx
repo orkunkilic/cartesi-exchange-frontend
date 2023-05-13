@@ -1,27 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { WagmiConfig, createClient, useAccount, useContractWrite } from "wagmi";
+import { WagmiConfig, createClient, useAccount, useContractWrite, usePrepareContractWrite } from "wagmi";
 import { ConnectKitProvider, ConnectKitButton, getDefaultClient } from "connectkit";
 import Logo from './Logo';
 import axios from 'axios';
 import { ethers } from 'ethers';
-import rollupABI from './abi/rollup.json';
+import useDebounce from './useDebounce';
+const rollupABI = require('./abi/rollup.json');
+
 
 const addOrderTransactionData = (side, quantity, price) => {
-  const json =  JSON.stringify({
-    "action": "ADD_ORDER",
-    "side": side,
-    "quantity": quantity,
-    "price": price
-  })
+  const json = `{
+    "action": "add_order",
+    "side": "${side}",
+    "quantity": ${quantity},
+    "price": ${price}
+  }`
 
+  // string to uint8 array
   return ethers.utils.toUtf8Bytes(json);
 }
 
 const cancelOrderTransactionData = (orderId) => {
-  const json = JSON.stringify({
-    "action": "CANCEL_ORDER",
-    "order_id": orderId
-  })
+  const json = `{
+    "action": "cancel_order",
+    "order_id": "${orderId}"
+  }`
 
   return ethers.utils.toUtf8Bytes(json);
 }
@@ -32,21 +35,29 @@ function Exchange() {
   const [userAsks, setUserAsks] = useState([])
   const [userBids, setUserBids] = useState([])
 
+  const [side, setSide] = useState("bid")
+  const [quantity, setQuantity] = useState(1)
+  const [price, setPrice] = useState(1)
+  const debouncedSide = useDebounce(side, 500)
+  const debouncedQuantity = useDebounce(quantity, 500)
+  const debouncedPrice = useDebounce(price, 500)
+
   const [userBalances, setUserBalances] = useState([])
   const { address, isConnecting, isDisconnected } = useAccount();
 
-  const { data, isLoading, isSuccess, write } = useContractWrite({
-    address: '0xeA8538B194742b992B19e694C13D63120908880e',
-    abi: rollupABI,
+  const { config } = usePrepareContractWrite({
+    addressOrName: '0xF8C694fd58360De278d5fF2276B7130Bfdc0192A',
+    contractInterface: rollupABI,
     functionName: 'addInput',
+    args: [addOrderTransactionData(debouncedSide, debouncedQuantity, debouncedPrice)],
+    enabled: Boolean(quantity && price),
   })
 
+  const { write } = useContractWrite(config)
+
   const addOrder = () => {
-    write({
-      args: [addOrderTransactionData("BUY", 1, 1)],
-      value: 0,
-      from: address,
-    })
+    console.log('calling write')
+    write?.()
   }
 
   useEffect(() => {
@@ -215,7 +226,7 @@ function Exchange() {
               <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
                 <span className="text-xl font-bold">Operations</span>
               </div>
-              <button className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200" onClick={() => addOrder}> add order </button>
+              <button className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200" onClick={addOrder}> add order </button>
             </div>
           </div>
         </div>

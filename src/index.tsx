@@ -3,13 +3,20 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css'
 
-import { WagmiConfig, createClient, chain } from 'wagmi';
+import { WagmiConfig, createClient  } from 'wagmi';
 import { ConnectKitProvider, getDefaultClient } from 'connectkit';
 
 const client = createClient(
   getDefaultClient({
     appName: 'Cartesi Order Book',
-    chains: [chain.localhost, chain.optimismGoerli],
+    chains: [{
+      id: 31337,
+      name: 'Localhost',
+      network: 'localhost',
+      rpcUrls: {
+        default: 'http://localhost:8545'
+      }
+    }]
   })
 );
 

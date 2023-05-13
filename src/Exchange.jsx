@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { WagmiConfig, createClient, useAccount, useContractWrite, usePrepareContractWrite } from "wagmi";
+import { WagmiConfig, createClient, useAccount, useContractWrite, usePrepareContractWrite, erc20ABI } from "wagmi";
 import { ConnectKitProvider, ConnectKitButton, getDefaultClient } from "connectkit";
 import Logo from './Logo';
 import axios from 'axios';
 import { ethers } from 'ethers';
 import useDebounce from './useDebounce';
 const rollupABI = require('./abi/rollup.json');
+const portalABI = require('./abi/erc20_portal.json');
 
 
 const addOrderTransactionData = (side, quantity, price) => {
@@ -30,30 +31,68 @@ const cancelOrderTransactionData = (orderId) => {
 }
 
 function Exchange() {
+  const [isCalledOnce, setIsCalledOnce] = useState(false)
+
   const [asks, setAsks] = useState([])
   const [bids, setBids] = useState([])
   const [userAsks, setUserAsks] = useState([])
   const [userBids, setUserBids] = useState([])
 
   const [side, setSide] = useState("bid")
-  const [quantity, setQuantity] = useState(1)
-  const [price, setPrice] = useState(1)
+  const [quantity, setQuantity] = useState(0)
+  const [price, setPrice] = useState(0)
   const debouncedSide = useDebounce(side, 500)
   const debouncedQuantity = useDebounce(quantity, 500)
   const debouncedPrice = useDebounce(price, 500)
 
+  const [depositToken, setDepositToken] = useState("bid")
+  const debouncedDepositToken = useDebounce(depositToken === "bid" ? '0x610178dA211FEF7D417bC0e6FeD39F05609AD788' : '0x67d269191c92Caf3cD7723F116c85e6E9bf55933', 500)
+
+  const [depositAmount, setDepositAmount] = useState(0)
+  const debouncedDepositAmount = useDebounce(depositAmount, 500)
+
   const [userBalances, setUserBalances] = useState([])
   const { address, isConnecting, isDisconnected } = useAccount();
 
+  const { config: depositConfig } = usePrepareContractWrite({
+    addressOrName: '0xF8C694fd58360De278d5fF2276B7130Bfdc0192A',
+    contractInterface: portalABI,
+    functionName: 'erc20Deposit',
+    args: [debouncedDepositToken, ethers.utils.parseEther(debouncedDepositAmount.toString()), '0x'],
+    enabled: Boolean(depositAmount),
+  })
+  const { config: approveConfig } = usePrepareContractWrite({
+    addressOrName: debouncedDepositToken,
+    contractInterface: erc20ABI,
+    functionName: 'approve',
+    args: ['0xF8C694fd58360De278d5fF2276B7130Bfdc0192A', ethers.utils.parseEther(debouncedDepositAmount.toString())],
+    enabled: Boolean(depositAmount),
+  })
+
+  
   const { config } = usePrepareContractWrite({
     addressOrName: '0xF8C694fd58360De278d5fF2276B7130Bfdc0192A',
     contractInterface: rollupABI,
     functionName: 'addInput',
-    args: [addOrderTransactionData(debouncedSide, debouncedQuantity, debouncedPrice)],
+    args: [addOrderTransactionData(debouncedSide, ethers.utils.parseEther(debouncedQuantity.toString()), debouncedPrice)],
     enabled: Boolean(quantity && price),
   })
-
+  
   const { write } = useContractWrite(config)
+  const { write: depositWrite } = useContractWrite(depositConfig)
+  const { write: approveWrite } = useContractWrite(approveConfig)
+
+
+
+  const approve = () => {
+    console.log('calling approve', depositToken, debouncedDepositToken)
+    approveWrite?.()
+  }
+
+  const deposit = () => {
+    console.log('calling deposit')
+    depositWrite?.()
+  }
 
   const addOrder = () => {
     console.log('calling write')
@@ -81,9 +120,13 @@ function Exchange() {
       }
     }
 
-    console.log("fetching orders...")
     fetchOrders()
-    console.log("fetched orders")
+    
+    const interval = setInterval(async () => {
+      await fetchOrders()
+    }, 1000)
+
+    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
@@ -110,6 +153,7 @@ function Exchange() {
         }
       })).json()
 
+      console.log(balances)
       setUserBalances(balances)
     }
 
@@ -117,6 +161,13 @@ function Exchange() {
       fetchUserOrders()
       fetchUserBalances()
     }
+
+    const interval = setInterval(async () => {
+      await fetchUserOrders()
+      await fetchUserBalances()
+    } , 1000)
+
+    return () => clearInterval(interval)
 
   }, [address])
 
@@ -140,19 +191,19 @@ function Exchange() {
             {/* Order book */}
             <div className="w-1/3 flex flex-col items-center">
               <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
-                <span className="text-xl font-bold">Asks</span>
-                <span className="text-xl font-bold">Bids</span>
+                <span className="text-lg font-bold">Asks</span>
+                <span className="text-lg font-bold">Bids</span>
               </div>
               
               <div className="w-full flex flex-row">
                 <div className="w-1/2 flex flex-col items-center">
                   <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
-                    <span className="text-xl font-bold">Price</span>
-                    <span className="text-xl font-bold">Amount</span>
+                    <span className="text-lg font-bold">Price</span>
+                    <span className="text-lg font-bold">Amount</span>
                   </div>
                   <div className="w-full flex flex-col">
                     {asks.length > 0 && asks.map((ask, index) => (
-                      <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                      <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-red-400">
                         <span>{ask.price}</span>
                         <span>{ask.quantity}</span>
                       </div>
@@ -161,13 +212,13 @@ function Exchange() {
                 </div>
                 <div className="w-1/2 flex flex-col items-center">
                   <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
-                    <span className="text-xl font-bold">Price</span>
-                    <span className="text-xl font-bold">Amount</span>
+                    <span className="text-lg font-bold">Price</span>
+                    <span className="text-lg font-bold">Amount</span>
                   </div>
                   <div className="w-full flex flex-col">
                       
                     {bids.length > 0 && bids.map((bid, index) => (
-                      <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                      <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-green-400">
                         <span>{bid.price}</span>
                         <span>{bid.quantity}</span>
                       </div>
@@ -180,24 +231,24 @@ function Exchange() {
             {/* Info */}
             <div className="w-1/3 flex flex-col items-center">
               <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
-                <span className="text-xl font-bold">Your Orders</span>
+                <span className="text-lg font-bold">Your Orders</span>
               </div>
               <div className="w-full flex flex-col">
                 <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
-                  <span className="text-xl font-bold">Price</span>
-                  <span className="text-xl font-bold">Amount</span>
-                  <span className="text-xl font-bold">Type</span>
+                  <span className="text-lg font-bold">Price</span>
+                  <span className="text-lg font-bold">Amount</span>
+                  <span className="text-lg font-bold">Type</span>
                 </div>
                 <div className="w-full flex flex-col">
                   {userBids.length > 0 && userBids.map((bid, index) => (
-                    <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                    <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-green-400">
                       <span>{bid.price}</span>
                       <span>{bid.quantity}</span>
                       <span>Bid</span>
                     </div>
                   ))}
                   {userAsks.length > 0 && userAsks.map((ask, index) => (
-                    <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                    <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-red-400">
                       <span>{ask.price}</span>
                       <span>{ask.quantity}</span>
                       <span>Ask</span>
@@ -207,14 +258,16 @@ function Exchange() {
               </div>
               <div className="w-full flex flex-col">
                 <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
-                  <span className="text-xl font-bold">Token</span>
-                  <span className="text-xl font-bold">Balance</span>
+                  <span className="text-lg font-bold">Token</span>
+                  <span className="text-lg font-bold">Total Balance</span>
+                  <span className="text-lg font-bold">Available Balance</span>
                 </div>
                 <div className="w-full flex flex-col">
                   {userBalances.length > 0 && userBalances.map((balance, index) => (
                     <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
                       <span>{balance.token}</span>
-                      <span>{balance.total}</span>
+                      <span>{balance.total / 10**18}</span>
+                      <span>{balance.available / 10**18}</span>
                     </div>
                   ))}
                 </div>
@@ -224,9 +277,55 @@ function Exchange() {
             {/* Operations */}
             <div className="w-1/3 flex flex-col items-center">
               <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
-                <span className="text-xl font-bold">Operations</span>
+                <span className="text-lg font-bold">Operations</span>
               </div>
-              <button className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200" onClick={addOrder}> add order </button>
+              <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                <span className="text-lg font-bold">Token</span>
+                <input className="w-1/2" type="text" value={side} onChange={e => setSide(e.target.value)} />
+              </div>
+              <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                <span className="text-lg font-bold">Price</span>
+                <input className="w-1/2" type="text" value={price} onChange={e => setPrice(e.target.value)} />
+              </div>
+              <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                <span className="text-lg font-bold">Amount</span>
+                <input className="w-1/2" type="text" value={quantity} onChange={e => setQuantity(e.target.value)} />
+              </div>
+              <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                <button
+                  className="w-32 h-8 mb-4 flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white"
+                  onClick={addOrder}
+                >
+                  <span className="text-lg font-bold">Add Order</span>
+                </button>
+              </div>
+              
+              <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
+                <span className="text-lg font-bold">Deposit</span>
+              </div>
+              <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                <span className="text-lg font-bold">Token</span>
+                <input className="w-1/2" type="text" value={depositToken} onChange={e => setDepositToken(e.target.value)} />
+              </div>
+              <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                <span className="text-lg font-bold">Amount</span>
+                <input className="w-1/2" type="text" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} />
+              </div>
+              <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-200">
+                <button
+                  className="w-32 h-8 mb-4 flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white"
+                  onClick={approve}
+                >
+                  <span className="text-lg font-bold">Approve</span>
+                </button>
+                <button
+                  className="w-32 h-8 mb-4 flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white"
+                  onClick={deposit}
+                >
+                  <span className="text-lg font-bold">Deposit</span>
+                </button>
+              </div>
+
             </div>
           </div>
         </div>

@@ -1,17 +1,9 @@
 import { ConnectKitButton } from 'connectkit';
+import Exchange from './Exchange';
 
 function App() {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-      }}
-    >
-      <ConnectKitButton />
-    </div>
+    <Exchange />
   );
 }
 

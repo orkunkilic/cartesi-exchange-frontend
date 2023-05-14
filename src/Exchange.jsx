@@ -46,7 +46,7 @@ function Exchange() {
   const debouncedPrice = useDebounce(price, 500)
 
   const [depositToken, setDepositToken] = useState("bid")
-  const debouncedDepositToken = useDebounce(depositToken === "bid" ? '0x610178dA211FEF7D417bC0e6FeD39F05609AD788' : '0x67d269191c92Caf3cD7723F116c85e6E9bf55933', 500)
+  const debouncedDepositToken = useDebounce(depositToken === "bid" ? '0x610178dA211FEF7D417bC0e6FeD39F05609AD788' : '0x84eA74d481Ee0A5332c457a4d796187F6Ba67fEB', 500)
 
   const [depositAmount, setDepositAmount] = useState(0)
   const debouncedDepositAmount = useDebounce(depositAmount, 500)
@@ -104,12 +104,14 @@ function Exchange() {
       try {
         const asks = await (await fetch('http://localhost:8080/asks', {
           headers: {
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
           }
         })).json()
         const bids = await (await fetch('http://localhost:8080/bids', {
           headers: {
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
           }
         })).json()
   
@@ -124,7 +126,7 @@ function Exchange() {
     
     const interval = setInterval(async () => {
       await fetchOrders()
-    }, 1000)
+    }, 3000)
 
     return () => clearInterval(interval)
   }, [])
@@ -133,12 +135,14 @@ function Exchange() {
     const fetchUserOrders = async () => {
       const asks = await (await fetch(`http://localhost:8080/asks?address=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266`, {
         headers: {
-          'Access-Control-Allow-Origin': '*'
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json'
         }
       })).json()
       const bids = await (await fetch(`http://localhost:8080/bids?address=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266`, {
         headers: {
-          'Access-Control-Allow-Origin': '*'
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json'
         }
       })).json()
 
@@ -149,7 +153,8 @@ function Exchange() {
     const fetchUserBalances = async () => {
       const balances = await (await fetch(`http://localhost:8080/balance?address=${address}`, {
         headers: {
-          'Access-Control-Allow-Origin': '*'
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json'
         }
       })).json()
 
@@ -158,14 +163,14 @@ function Exchange() {
     }
 
     if (address) {
-      fetchUserOrders()
+      // fetchUserOrders()
       fetchUserBalances()
     }
 
     const interval = setInterval(async () => {
-      await fetchUserOrders()
+      // await fetchUserOrders()
       await fetchUserBalances()
-    } , 1000)
+    } , 3000)
 
     return () => clearInterval(interval)
 
@@ -205,7 +210,7 @@ function Exchange() {
                     {asks.length > 0 && asks.map((ask, index) => (
                       <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-red-400">
                         <span>{ask.price}</span>
-                        <span>{ask.quantity}</span>
+                        <span>{Number(ask.quantity) / 10**18}</span>
                       </div>
                     ))}
                   </div>
@@ -220,7 +225,7 @@ function Exchange() {
                     {bids.length > 0 && bids.map((bid, index) => (
                       <div key={index} className="w-full flex flex-row justify-between items-center px-4 py-2 bg-green-400">
                         <span>{bid.price}</span>
-                        <span>{bid.quantity}</span>
+                        <span>{Number(bid.quantity) / 10**18}</span>
                       </div>
                     ))}
                   </div>
@@ -231,7 +236,7 @@ function Exchange() {
             {/* Info */}
             <div className="w-1/3 flex flex-col items-center">
               <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
-                <span className="text-lg font-bold">Your Orders</span>
+                <span className="text-lg font-bold">Your Balances</span>
               </div>
               <div className="w-full flex flex-col">
                 <div className="w-full flex flex-row justify-between items-center px-4 py-2 bg-gray-800 text-white">
